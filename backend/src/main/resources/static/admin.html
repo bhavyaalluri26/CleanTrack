@@ -1,0 +1,38 @@
+<!DOCTYPE html><html lang="en"><head><title>Admin - CleanTrack</title><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"><link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"><link href="css/style.css" rel="stylesheet"><script src="js/theme.js"></script></head><body>
+<div id="nav"></div><div class="container py-4">
+<div class="row g-3 mb-4" id="stats"></div>
+<ul class="nav nav-pills mb-3"><li class="nav-item"><button class="nav-link active" id="t1" onclick="tab(1)">Complaints</button></li>
+<li class="nav-item"><button class="nav-link" id="t2" onclick="tab(2)">Users &amp; Collectors</button></li></ul>
+<div id="p1"><div class="row g-2 mb-3"><div class="col-md-6"><input id="q" class="form-control" placeholder="Search description, location or user" oninput="loadC()"></div>
+<div class="col-md-3"><select id="st" class="form-select" onchange="loadC()"><option value="">All statuses</option><option>PENDING</option><option>ASSIGNED</option><option>IN_PROGRESS</option><option>RESOLVED</option></select></div></div>
+<div class="card p-2"><div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>ID</th><th>User</th><th>Details</th><th>Date</th><th>Status</th><th>Collector</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></div></div>
+<div id="p2" class="d-none"><div class="card p-3 mb-3"><h6>Add Collector</h6><form id="cf" class="row g-2"><div class="col-md-3"><input id="cn" class="form-control" placeholder="Name" required></div>
+<div class="col-md-3"><input id="ce" type="email" class="form-control" placeholder="Email" required></div><div class="col-md-3"><input id="cp" type="password" class="form-control" placeholder="Password (min 6)" required></div>
+<div class="col-md-3"><button class="btn btn-success w-100">Add Collector</button></div></form></div>
+<div class="card p-2"><div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead><tbody id="urows"></tbody></table></div></div></div></div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script><script src="js/app.js"></script><script>
+let collectors = [], timer;
+function tab(n) { p1.classList.toggle('d-none', n !== 1); p2.classList.toggle('d-none', n !== 2); t1.classList.toggle('active', n === 1); t2.classList.toggle('active', n === 2); if (n === 2) loadU(); }
+async function loadStats() { const s = await api('/admin/stats'); const items = [['Total', s.total], ['Pending', s.PENDING], ['Assigned', s.ASSIGNED], ['In Progress', s.IN_PROGRESS], ['Resolved', s.RESOLVED]];
+  stats.innerHTML = items.map(i => '<div class="col-6 col-md"><div class="card p-3 text-center"><div class="stat">' + i[1] + '</div><small class="text-muted">' + i[0] + '</small></div></div>').join(''); }
+function row(c) { const locked = c.status === 'IN_PROGRESS' || c.status === 'RESOLVED';
+  const opts = collectors.map(u => '<option value="' + u.id + '"' + (c.collector && c.collector.id === u.id ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('');
+  const sel = locked ? esc(c.collector ? c.collector.name : '-') : '<select class="form-select form-select-sm" id="s' + c.id + '" onchange="assign(' + c.id + ')"><option value="">Assign...</option>' + opts + '</select>';
+  return `<tr><td>${c.id}</td><td>${esc(c.user.name)}</td><td><strong>${esc(c.location)}</strong><br><small class="text-muted">${esc(c.description)}</small></td>
+  <td><small>${fmt(c.createdAt)}</small></td><td>${badge(c.status)}</td><td style="min-width:150px">${sel}</td>
+  <td><button class="btn btn-sm btn-outline-secondary" onclick="edit(${c.id})"><i class="bi bi-pencil"></i></button></td></tr>`; }
+let cache = [];
+async function loadC() { clearTimeout(timer); timer = setTimeout(async () => { try {
+  cache = await api('/admin/complaints?status=' + encodeURIComponent(st.value) + '&q=' + encodeURIComponent(q.value));
+  rows.innerHTML = cache.length ? cache.map(row).join('') : '<tr><td colspan="7">' + empty('bi-inbox', 'No complaints found') + '</td></tr>'; } catch (e) { toast(e.message, 'danger'); } }, 200); }
+async function assign(id) { const v = document.getElementById('s' + id).value; if (!v) return;
+  try { await api('/admin/complaints/' + id + '/assign/' + v, 'PUT'); toast('Complaint assigned'); refresh(); } catch (e) { toast(e.message, 'danger'); } }
+async function edit(id) { const c = cache.find(x => x.id === id); const l = prompt('Location:', c.location); if (l === null) return;
+  try { await api('/admin/complaints/' + id, 'PUT', {description: c.description, location: l}); toast('Complaint updated'); refresh(); } catch (e) { toast(e.message, 'danger'); } }
+async function loadU() { try { const u = await api('/admin/users'); collectors = u.filter(x => x.role === 'COLLECTOR');
+  urows.innerHTML = u.map(x => '<tr><td>' + x.id + '</td><td>' + esc(x.name) + '</td><td>' + esc(x.email) + '</td><td>' + x.role + '</td><td></td></tr>').join(''); } catch (e) { toast(e.message, 'danger'); } }
+cf.onsubmit = async e => { e.preventDefault(); try { await api('/admin/collectors', 'POST', {name: cn.value, email: ce.value, password: cp.value}); cf.reset(); toast('Collector added'); loadU(); } catch (x) { toast(x.message, 'danger'); } };
+async function refresh() { await loadStats(); loadC(); }
+async function init() { try { collectors = (await api('/admin/users')).filter(x => x.role === 'COLLECTOR'); refresh(); } catch (e) { toast(e.message, 'danger'); } }
+if (guard('ADMIN')) init();
+</script></body></html>
